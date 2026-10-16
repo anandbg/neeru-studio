@@ -144,7 +144,7 @@ async function askAI(prompt) {
   const image = see ? art.toDataURL('image/png') : null;
   let last = null;
   for (const m of models) {
-    status.textContent = 'Thinking… (' + m.id.split('/')[1].replace(':free', '') + ')';
+    status.textContent = 'AI is working on it… asking ' + m.id.split('/')[1].replace(':free', '');
     const useImage = image && m.vision;
     const text = prompt + (useImage ? `\n(The image is the current canvas. It already has ${shapes.length} shapes.)`
       : see ? `\n(The canvas already has ${shapes.length} shapes; add to it.)` : '');
@@ -162,21 +162,37 @@ async function askAI(prompt) {
 
 /* ---------- UI ---------- */
 const status = document.getElementById('aiStatus');
+const go = document.getElementById('aiGo'), aiInput = document.getElementById('aiText');
+let busyTimer = null;
+
+/* While the AI works, lock Ask AI, the mic and the text box, and show it is working:
+   a spinner with a seconds counter in the button and a moving bar under the header. */
+function setBusy(on) {
+  go.disabled = on; mic.disabled = on; aiInput.readOnly = on;
+  go.classList.toggle('busy', on); status.classList.toggle('busy', on);
+  document.getElementById('aiBar').classList.toggle('on', on);
+  clearInterval(busyTimer);
+  if (on) {
+    const t0 = Date.now();
+    const tick = () => { go.innerHTML = `<span class="spin"></span>Working… ${Math.round((Date.now() - t0) / 1000)}s`; };
+    tick(); busyTimer = setInterval(tick, 1000);
+  } else go.textContent = '✨ Ask AI';
+}
+
 document.getElementById('aiForm').onsubmit = async e => {
   e.preventDefault();
-  const input = document.getElementById('aiText'), go = document.getElementById('aiGo');
-  const prompt = input.value.trim();
-  if (!prompt) return;
-  go.disabled = true; status.textContent = 'Thinking…';
+  const prompt = aiInput.value.trim();
+  if (!prompt || go.disabled) return;
+  setBusy(true); status.textContent = 'Thinking…';
   try {
     const reply = await askAI(prompt);
     const { drawn, cells } = applyActions(reply.actions);
     status.textContent = (reply.say ? reply.say + ' ' : '') + `(${drawn} shapes, ${cells} cells · ${reply.model.split('/')[1].replace(':free', '')})`;
-    input.value = '';
+    aiInput.value = '';
   } catch (err) {
     status.textContent = '⚠️ ' + err.message;
   } finally {
-    go.disabled = false;
+    setBusy(false);
   }
 };
 
@@ -209,7 +225,7 @@ if (!Speech) {
         : e.error === 'no-speech' ? 'Didn’t hear anything. Tap 🎤 and try again.' : '⚠️ Voice error: ' + e.error;
     };
     rec.onend = () => {
-      mic.classList.remove('listening'); rec = null;
+      mic.classList.remove('listening'); rec = null;   // the submit below then locks the mic until the AI replies
       if (finalText.trim()) document.getElementById('aiForm').requestSubmit();
     };
     rec.start();

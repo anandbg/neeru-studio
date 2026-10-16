@@ -43,6 +43,18 @@
   #aiMic.listening { background:#e63946; color:#fff; animation:pulse 1s infinite; }
   @keyframes pulse { 50% { opacity:.6; } }
   #aiStatus { font-size:12px; color:var(--muted); max-width:280px; }
+  /* while the AI works: buttons greyed and locked, a spinner in Ask AI, a moving bar under the header */
+  .ai button:disabled, .ai input:read-only { opacity:.55; cursor:not-allowed; }
+  .ai input:read-only { background:#f4f5f7; }
+  #aiGo.busy { opacity:1; background:var(--accent); color:#fff; min-width:150px; }
+  #aiGo .spin { display:inline-block; width:12px; height:12px; margin-right:6px; vertical-align:-1px; border:2px solid rgba(255,255,255,.4); border-top-color:#fff; border-radius:50%; animation:spin .8s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  header { position:relative; }
+  #aiBar { position:absolute; left:0; right:0; bottom:-1px; height:3px; overflow:hidden; display:none; }
+  #aiBar.on { display:block; }
+  #aiBar::before { content:''; position:absolute; top:0; bottom:0; width:35%; background:linear-gradient(90deg,transparent,var(--accent),transparent); animation:slide 1.2s ease-in-out infinite; }
+  @keyframes slide { from { left:-35%; } to { left:100%; } }
+  #aiStatus.busy { color:var(--accent); font-weight:600; }
   dialog { border:1px solid var(--line); border-radius:12px; padding:18px; }
 </style>
 </head>
@@ -56,6 +68,7 @@
     <button id="aiGo">✨ Ask AI</button>
   </form>
   <span id="aiStatus"></span>
+  <div id="aiBar"></div>
 </header>
 <main>
   <!-- DESIGN -->
