@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neeru Studio</title>
+<style>
+  :root { --bg:#f4f5f8; --panel:#fff; --line:#dde0e6; --text:#1d2129; --muted:#667085; --accent:#6c4cf5; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.4 -apple-system, system-ui, sans-serif; background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; }
+  header { display:flex; align-items:center; gap:16px; padding:8px 14px; background:var(--panel); border-bottom:1px solid var(--line); }
+  header h1 { font-size:16px; margin:0; } header h1 span { color:var(--accent); }
+  .tabs button { border:0; background:none; padding:6px 12px; border-radius:8px; cursor:pointer; font:inherit; color:var(--muted); }
+  .tabs button.on { background:var(--accent); color:#fff; }
+  main { flex:1; display:flex; min-height:0; }
+  .view { flex:1; display:none; min-height:0; } .view.on { display:flex; }
+  aside { width:220px; background:var(--panel); border-right:1px solid var(--line); padding:12px; overflow:auto; }
+  aside h3 { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:14px 0 6px; }
+  .tools { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
+  .tools button { aspect-ratio:1; border:1px solid var(--line); background:#fff; border-radius:8px; cursor:pointer; font-size:18px; }
+  .tools button.on { border-color:var(--accent); background:#efeafe; }
+  .swatches { display:grid; grid-template-columns:repeat(6,1fr); gap:4px; }
+  .swatches div { aspect-ratio:1; border-radius:4px; cursor:pointer; border:1px solid rgba(0,0,0,.1); }
+  label { display:flex; justify-content:space-between; align-items:center; gap:6px; margin:4px 0; font-size:12px; }
+  input[type=range] { width:110px; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; }
+  .row button { flex:1; padding:6px; border:1px solid var(--line); background:#fff; border-radius:6px; cursor:pointer; font:inherit; font-size:12px; }
+  #wheel { width:196px; height:196px; cursor:crosshair; display:block; }
+  .stage { flex:1; display:flex; align-items:center; justify-content:center; overflow:auto; padding:20px; }
+  canvas#art { background:#fff; box-shadow:0 2px 12px rgba(0,0,0,.08); cursor:crosshair; }
+  .sheetwrap { flex:1; overflow:auto; background:#fff; }
+  .fbar { display:flex; gap:8px; padding:6px 10px; border-bottom:1px solid var(--line); background:var(--panel); align-items:center; }
+  .fbar input { flex:1; padding:5px 8px; border:1px solid var(--line); border-radius:6px; font:13px ui-monospace, monospace; }
+  table { border-collapse:collapse; font-size:13px; }
+  th { background:#f0f2f5; color:var(--muted); font-weight:500; min-width:90px; padding:3px; border:1px solid var(--line); position:sticky; top:0; }
+  th.r { min-width:40px; position:sticky; left:0; }
+  td { border:1px solid var(--line); padding:0; height:24px; }
+  td input { width:100%; border:0; padding:3px 6px; font:inherit; background:transparent; }
+  td input:focus { outline:2px solid var(--accent); }
+  .ai { flex:1; display:flex; gap:6px; max-width:720px; }
+  .ai input { flex:1; padding:7px 10px; border:1px solid var(--line); border-radius:8px; font:inherit; }
+  .ai button { border:0; border-radius:8px; padding:0 12px; cursor:pointer; font:inherit; background:#efeafe; color:var(--accent); font-weight:600; }
+  #aiStatus { font-size:12px; color:var(--muted); max-width:280px; }
+  dialog { border:1px solid var(--line); border-radius:12px; padding:18px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Neeru <span>Studio</span></h1>
+  <div class="tabs"><button data-v="draw" class="on">Design</button><button data-v="sheet">Sheet</button></div>
+  <form id="aiForm" class="ai">
+    <input id="aiText" placeholder="Ask AI: draw a sunset over the sea · make a weekly pocket-money table" autocomplete="off">
+    <button id="aiGo">✨ Ask AI</button>
+    <button type="button" id="aiSet" title="AI settings">⚙︎</button>
+  </form>
+  <span id="aiStatus"></span>
+</header>
+<dialog id="aiDlg">
+  <form method="dialog">
+    <h3 style="margin-top:0">AI settings</h3>
+    <p style="font-size:12px;color:var(--muted)">Get a free key at openrouter.ai/keys. It is saved only in this browser on this Mac.</p>
+    <label>OpenRouter key <input id="aiKey" type="password" style="width:260px"></label>
+    <label>Model <input id="aiModel" style="width:260px"></label>
+    <label>Let the AI see the canvas <input type="checkbox" id="aiSee" checked></label>
+    <div class="row" style="margin-top:10px"><button value="save">Save</button></div>
+  </form>
+</dialog>
+<main>
+  <!-- DESIGN -->
+  <section class="view on" id="draw">
+    <aside>
+      <h3>Tools</h3>
+      <div class="tools" id="tools">
+        <button data-t="select" title="Move">✥</button>
+        <button data-t="pen" class="on" title="Pen">✎</button>
+        <button data-t="line" title="Line">╱</button>
+        <button data-t="rect" title="Rectangle">▭</button>
+        <button data-t="ellipse" title="Ellipse">◯</button>
+        <button data-t="star" title="Star">☆</button>
+        <button data-t="poly" title="Polygon">⬠</button>
+        <button data-t="custom" title="Custom shape: click points, double-click to close">✳</button>
+      </div>
+      <label>Sides / points <input type="number" id="sides" value="5" min="3" max="20" style="width:50px"></label>
+      <h3>Colour</h3>
+      <canvas id="wheel" width="392" height="392"></canvas>
+      <label>Lightness <input type="range" id="light" min="0" max="100" value="50"></label>
+      <label>Opacity <input type="range" id="alpha" min="0" max="100" value="100"></label>
+      <label>Hex <input id="hex" value="#6c4cf5" style="width:80px"></label>
+      <div class="row" style="margin:6px 0">
+        <button id="setFill">Fill ⬛</button><button id="setStroke">Stroke ⬜</button><button id="eyedrop">Eyedropper</button>
+      </div>
+      <div class="row" style="font-size:12px;margin-bottom:6px">
+        <span>Fill <b id="fillSw" style="display:inline-block;width:18px;height:12px;vertical-align:middle"></b></span>
+        <span>Stroke <b id="strokeSw" style="display:inline-block;width:18px;height:12px;vertical-align:middle"></b></span>
+        <label style="margin:0">No fill <input type="checkbox" id="nofill"></label>
+      </div>
+      <div class="swatches" id="swatches"></div>
+      <label>Stroke width <input type="range" id="width" min="1" max="40" value="4"></label>
+      <h3>Edit</h3>
+      <div class="row"><button id="undo">Undo</button><button id="clear">Clear</button><button id="png">Save PNG</button></div>
+    </aside>
+    <div class="stage"><canvas id="art" width="1000" height="680"></canvas></div>
+  </section>
+  <!-- SHEET -->
+  <section class="view" id="sheet" style="flex-direction:column">
+    <div class="fbar"><b id="cellName">A1</b><input id="fx" placeholder="Type a value or a formula, e.g. =SUM(A1:A5)"></div>
+    <div class="sheetwrap"><table id="grid"></table></div>
+  </section>
+</main>
+<script>
+/* ---------- tabs ---------- */
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.tabs button,.view').forEach(e => e.classList.remove('on'));
+  b.classList.add('on'); document.getElementById(b.dataset.v).classList.add('on');
+});
+
+/* ---------- colour ---------- */
+const wheel = document.getElementById('wheel'), wc = wheel.getContext('2d');
+let hue = 255, sat = 90, light = 50, alpha = 1, target = 'fill';
+let fill = '#6c4cf5', stroke = '#1d2129';
+function drawWheel() {
+  const r = 196, img = wc.createImageData(392, 392);
+  for (let y = 0; y < 392; y++) for (let x = 0; x < 392; x++) {
+    const dx = x - r, dy = y - r, d = Math.hypot(dx, dy);
+    if (d > r) continue;
+    const [R, G, B] = hsl2rgb((Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360, d / r * 100, light);
+    const i = (y * 392 + x) * 4; img.data.set([R, G, B, 255], i);
+  }
+  wc.putImageData(img, 0, 0);
+}
+function hsl2rgb(h, s, l) {
+  s /= 100; l /= 100; const k = n => (n + h / 30) % 12, a = s * Math.min(l, 1 - l);
+  const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+  return [f(0), f(8), f(4)].map(v => Math.round(v * 255));
+}
+const toHex = ([r, g, b]) => '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+function rgba(hex) { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${n >> 8 & 255},${n & 255},${alpha})`; }
+function setColour(hex) {
+  document.getElementById('hex').value = hex;
+  if (target === 'fill') fill = hex; else stroke = hex;
+  document.getElementById('fillSw').style.background = fill;
+  document.getElementById('strokeSw').style.background = stroke;
+}
+wheel.onpointerdown = wheel.onpointermove = e => {
+  if (e.type === 'pointermove' && !e.buttons) return;
+  const b = wheel.getBoundingClientRect(), x = (e.clientX - b.left) * 2 - 196, y = (e.clientY - b.top) * 2 - 196;
+  hue = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360; sat = Math.min(100, Math.hypot(x, y) / 196 * 100);
+  setColour(toHex(hsl2rgb(hue, sat, light)));
+};
+document.getElementById('light').oninput = e => { light = +e.target.value; drawWheel(); setColour(toHex(hsl2rgb(hue, sat, light))); };
+document.getElementById('alpha').oninput = e => alpha = e.target.value / 100;
+document.getElementById('hex').onchange = e => /^#[0-9a-f]{6}$/i.test(e.target.value) && setColour(e.target.value);
+document.getElementById('setFill').onclick = () => { target = 'fill'; document.getElementById('hex').value = fill; };
+document.getElementById('setStroke').onclick = () => { target = 'stroke'; document.getElementById('hex').value = stroke; };
+const sw = document.getElementById('swatches');
+['#000000','#ffffff','#e63946','#f4a261','#ffd60a','#2a9d8f','#06d6a0','#118ab2','#3a86ff','#6c4cf5','#c77dff','#ff70a6','#8d99ae','#5c4033','#2b2d42','#ffb4a2','#b5e48c','#a2d2ff']
+  .forEach(c => { const d = document.createElement('div'); d.style.background = c; d.onclick = () => setColour(c); sw.appendChild(d); });
+drawWheel(); setColour(fill);
+
+/* ---------- drawing ---------- */
+const art = document.getElementById('art'), ctx = art.getContext('2d');
+let tool = 'pen', shapes = [], live = null, picking = false, dragging = null;
+document.querySelectorAll('#tools button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#tools button').forEach(x => x.classList.remove('on'));
+  b.classList.add('on'); tool = b.dataset.t; live = null; render();
+  // pen and line have no fill, so colour picks should go to the stroke
+  target = ['pen', 'line'].includes(tool) ? 'stroke' : 'fill';
+  document.getElementById('hex').value = target === 'fill' ? fill : stroke;
+});
+const pos = e => { const b = art.getBoundingClientRect(); return [(e.clientX - b.left) * art.width / b.width, (e.clientY - b.top) * art.height / b.height]; };
+const style = () => ({ fill: document.getElementById('nofill').checked ? null : rgba(fill), stroke: rgba(stroke), w: +document.getElementById('width').value });
+
+function regular(cx, cy, r, n, star) {
+  const pts = [], k = star ? n * 2 : n;
+  for (let i = 0; i < k; i++) {
+    const a = -Math.PI / 2 + i * 2 * Math.PI / k, rr = star && i % 2 ? r * 0.45 : r;
+    pts.push([cx + rr * Math.cos(a), cy + rr * Math.sin(a)]);
+  }
+  return pts;
+}
+function pathOf(s) {
+  const p = new Path2D(), [x0, y0] = s.a || [0, 0], [x1, y1] = s.b || [0, 0];
+  if (s.type === 'rect') p.rect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
+  else if (s.type === 'ellipse') p.ellipse((x0 + x1) / 2, (y0 + y1) / 2, Math.abs(x1 - x0) / 2, Math.abs(y1 - y0) / 2, 0, 0, 7);
+  else if (s.type === 'line') { p.moveTo(x0, y0); p.lineTo(x1, y1); }
+  else {
+    const pts = s.pts || regular(x0, y0, Math.hypot(x1 - x0, y1 - y0), s.n, s.type === 'star');
+    pts.forEach(([x, y], i) => i ? p.lineTo(x, y) : p.moveTo(x, y));
+    if (s.type !== 'pen' && !s.open) p.closePath();
+  }
+  return p;
+}
+function drawShape(s) {
+  ctx.save(); ctx.translate(s.dx || 0, s.dy || 0);
+  ctx.lineWidth = s.w; ctx.lineCap = ctx.lineJoin = 'round';
+  const p = pathOf(s);
+  if (s.fill && !['pen', 'line'].includes(s.type)) { ctx.fillStyle = s.fill; ctx.fill(p); }
+  ctx.strokeStyle = s.stroke; ctx.stroke(p); ctx.restore();
+}
+function render() {
+  ctx.clearRect(0, 0, art.width, art.height);
+  shapes.forEach(drawShape); if (live) drawShape(live);
+}
+art.onpointerdown = e => {
+  const [x, y] = pos(e);
+  if (picking) {
+    render(); const d = ctx.getImageData(x, y, 1, 1).data; setColour(toHex([d[0], d[1], d[2]]));
+    picking = false; art.style.cursor = 'crosshair'; return;
+  }
+  if (tool === 'select') {
+    for (let i = shapes.length - 1; i >= 0; i--) {
+      const s = shapes[i]; ctx.save(); ctx.translate(s.dx || 0, s.dy || 0); ctx.lineWidth = s.w + 8;
+      const hit = ctx.isPointInPath(pathOf(s), x, y) || ctx.isPointInStroke(pathOf(s), x, y); ctx.restore();
+      if (hit) { dragging = { i, sx: x, sy: y, dx: s.dx || 0, dy: s.dy || 0 }; return; }
+    }
+    return;
+  }
+  if (tool === 'custom') {
+    if (!live) live = { type: 'custom', pts: [[x, y], [x, y]], open: true, ...style() };
+    else live.pts.push([x, y]);
+    render(); return;
+  }
+  live = { type: tool, a: [x, y], b: [x, y], n: +document.getElementById('sides').value, ...style() };
+  if (tool === 'pen') live.pts = [[x, y]];
+  art.setPointerCapture(e.pointerId);
+};
+art.onpointermove = e => {
+  const [x, y] = pos(e);
+  if (dragging) { const s = shapes[dragging.i]; s.dx = dragging.dx + x - dragging.sx; s.dy = dragging.dy + y - dragging.sy; render(); return; }
+  if (!live) return;
+  if (tool === 'custom') { live.pts[live.pts.length - 1] = [x, y]; render(); return; }
+  if (!e.buttons) return;
+  if (tool === 'pen') live.pts.push([x, y]); else live.b = [x, y];
+  render();
+};
+art.onpointerup = () => {
+  dragging = null;
+  if (live && tool !== 'custom') { shapes.push(live); live = null; render(); }
+};
+art.ondblclick = () => {
+  if (tool === 'custom' && live) { live.pts.pop(); live.open = false; shapes.push(live); live = null; render(); }
+};
+document.getElementById('undo').onclick = () => { shapes.pop(); render(); };
+document.getElementById('clear').onclick = () => { if (confirm('Clear the canvas?')) { shapes = []; render(); } };
+document.getElementById('eyedrop').onclick = () => { picking = true; art.style.cursor = 'copy'; };
+document.getElementById('png').onclick = () => { const a = document.createElement('a'); a.download = 'neeru-design.png'; a.href = art.toDataURL(); a.click(); };
+document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key === 'z') { e.preventDefault(); shapes.pop(); render(); } });
+
+/* ---------- sheet ---------- */
+const COLS = 12, ROWS = 40, raw = {}, grid = document.getElementById('grid');
+const colName = i => String.fromCharCode(65 + i);
+let head = '<tr><th class="r"></th>' + [...Array(COLS)].map((_, c) => `<th>${colName(c)}</th>`).join('') + '</tr>';
+for (let r = 1; r <= ROWS; r++) head += `<tr><th class="r">${r}</th>` + [...Array(COLS)].map((_, c) => `<td><input data-id="${colName(c)}${r}"></td>`).join('') + '</tr>';
+grid.innerHTML = head;
+function cellValue(id, seen = new Set()) {
+  const v = raw[id]; if (v === undefined || v === '') return 0;
+  if (!String(v).startsWith('=')) return isNaN(v) ? v : +v;
+  if (seen.has(id)) return '#LOOP'; seen.add(id);
+  return evaluate(v.slice(1), seen);
+}
+function range(a, b) {
+  const [, c1, r1] = a.match(/([A-Z])(\d+)/), [, c2, r2] = b.match(/([A-Z])(\d+)/), out = [];
+  for (let c = c1.charCodeAt(0); c <= c2.charCodeAt(0); c++) for (let r = +r1; r <= +r2; r++) out.push(String.fromCharCode(c) + r);
+  return out;
+}
+const FN = {
+  SUM: a => a.reduce((x, y) => x + y, 0), AVERAGE: a => a.length ? FN.SUM(a) / a.length : 0,
+  MIN: a => Math.min(...a), MAX: a => Math.max(...a), COUNT: a => a.length,
+};
+function evaluate(expr, seen) {
+  try {
+    let e = expr.toUpperCase().replace(/\b(SUM|AVERAGE|MIN|MAX|COUNT)\(([A-Z]\d+):([A-Z]\d+)\)/g,
+      (_, f, a, b) => FN[f](range(a, b).map(id => +cellValue(id, new Set(seen)) || 0)));
+    e = e.replace(/\b([A-Z])(\d+)\b/g, (m) => +cellValue(m, new Set(seen)) || 0);
+    if (!/^[\d\s+\-*/().]*$/.test(e)) return '#ERROR';   // only arithmetic is ever evaluated
+    const n = Function('"use strict";return (' + e + ')')();
+    return Number.isFinite(n) ? Math.round(n * 1e6) / 1e6 : '#ERROR';
+  } catch { return '#ERROR'; }
+}
+const inputs = [...grid.querySelectorAll('input')], fx = document.getElementById('fx');
+let current = 'A1';
+function refresh() { inputs.forEach(i => { if (i !== document.activeElement) i.value = raw[i.dataset.id] === undefined ? '' : cellValue(i.dataset.id); }); }
+inputs.forEach(i => {
+  i.onfocus = () => { current = i.dataset.id; document.getElementById('cellName').textContent = current; i.value = raw[current] ?? ''; fx.value = i.value; };
+  i.oninput = () => { fx.value = i.value; };
+  i.onblur = () => { raw[i.dataset.id] = i.value; refresh(); };
+  i.onkeydown = e => {
+    if (e.key === 'Enter') { const n = grid.querySelector(`[data-id="${current[0]}${+current.slice(1) + 1}"]`); (n || i).focus(); }
+  };
+});
+fx.onchange = () => { raw[current] = fx.value; refresh(); };
+Object.assign(raw, { A1: 'Item', B1: 'Price', A2: 'Pens', B2: '3.5', A3: 'Paper', B3: '6', A4: 'Paint', B4: '12.25', A5: 'Total', B5: '=SUM(B2:B4)' });
+refresh();
+</script>
+<script src="ai.js"></script>
+</body>
+</html>
