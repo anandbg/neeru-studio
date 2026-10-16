@@ -40,6 +40,8 @@
   .ai { flex:1; display:flex; gap:6px; max-width:720px; }
   .ai input { flex:1; padding:7px 10px; border:1px solid var(--line); border-radius:8px; font:inherit; }
   .ai button { border:0; border-radius:8px; padding:0 12px; cursor:pointer; font:inherit; background:#efeafe; color:var(--accent); font-weight:600; }
+  #aiMic.listening { background:#e63946; color:#fff; animation:pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity:.6; } }
   #aiStatus { font-size:12px; color:var(--muted); max-width:280px; }
   dialog { border:1px solid var(--line); border-radius:12px; padding:18px; }
 </style>
@@ -50,6 +52,7 @@
   <div class="tabs"><button data-v="draw" class="on">Design</button><button data-v="sheet">Sheet</button></div>
   <form id="aiForm" class="ai">
     <input id="aiText" placeholder="Ask AI: draw a sunset over the sea · make a weekly pocket-money table" autocomplete="off">
+    <button type="button" id="aiMic" title="Speak instead of typing">🎤</button>
     <button id="aiGo">✨ Ask AI</button>
     <button type="button" id="aiSet" title="AI settings">⚙︎</button>
   </form>

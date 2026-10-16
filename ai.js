@@ -149,3 +149,39 @@ document.getElementById('aiForm').onsubmit = async e => {
     go.disabled = false;
   }
 };
+
+/* ---------- voice input ----------
+   Uses the browser's built-in speech recognition (Chrome, Edge, Safari).
+   Free, no key. Words appear as you speak; when you stop, it asks the AI. */
+const mic = document.getElementById('aiMic');
+const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (!Speech) {
+  mic.title = 'Voice needs Chrome, Edge or Safari';
+  mic.onclick = () => { status.textContent = '⚠️ Voice input needs Chrome, Edge or Safari.'; };
+} else {
+  let rec = null;
+  mic.onclick = () => {
+    if (rec) { rec.stop(); return; }
+    rec = new Speech();
+    rec.lang = navigator.language || 'en-GB';
+    rec.interimResults = true;
+    const input = document.getElementById('aiText');
+    let finalText = '';
+    rec.onstart = () => { mic.classList.add('listening'); status.textContent = 'Listening… speak now.'; };
+    rec.onresult = e => {
+      let interim = '';
+      for (const r of e.results) (r.isFinal ? (finalText = r[0].transcript) : (interim += r[0].transcript));
+      input.value = finalText || interim;
+    };
+    rec.onerror = e => {
+      status.textContent = e.error === 'not-allowed'
+        ? '⚠️ Microphone blocked. Allow it in the browser address bar.'
+        : e.error === 'no-speech' ? 'Didn’t hear anything. Tap 🎤 and try again.' : '⚠️ Voice error: ' + e.error;
+    };
+    rec.onend = () => {
+      mic.classList.remove('listening'); rec = null;
+      if (finalText.trim()) document.getElementById('aiForm').requestSubmit();
+    };
+    rec.start();
+  };
+}

@@ -8,5 +8,6 @@ A drawing and spreadsheet app with AI built in. It runs in the browser.
   - It uses OpenRouter's free models.
   - Bring your own free key from openrouter.ai/keys and paste it into ⚙︎.
   - The key is saved only in your browser.
+- **Voice:** tap 🎤 and speak. Works in Chrome, Edge and Safari.
 
 All code is original.
