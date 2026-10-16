@@ -66,12 +66,13 @@ function drawMap(s) {
   projection = makeProjection(s.focus);
   const path = d3.geoPath(projection, ctx);
   const hi = new Map((s.highlight || []).map(h => [findCountry(h.name)?.properties.name, h.colour || '#e63946']));
+  const focusName = findCountry(s.focus)?.properties.name;   // the country a map is "of" stands out from its neighbours
   ctx.save();
   ctx.beginPath(); path({ type: 'Sphere' }); ctx.fillStyle = s.sea || '#cfe8f7'; ctx.fill();
   ctx.beginPath(); path(d3.geoGraticule10()); ctx.strokeStyle = 'rgba(17,138,178,.15)'; ctx.lineWidth = 0.6; ctx.stroke();
   for (const f of geo.countries.features) {
     ctx.beginPath(); path(f);
-    ctx.fillStyle = hi.get(f.properties.name) || s.land || '#f1ead7'; ctx.fill();
+    ctx.fillStyle = hi.get(f.properties.name) || (f.properties.name === focusName ? '#f6dfa4' : s.land || '#f1ead7'); ctx.fill();
     ctx.strokeStyle = '#8d99ae'; ctx.lineWidth = 0.6; ctx.stroke();
   }
   // name each highlighted country at its centre
