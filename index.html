@@ -54,20 +54,9 @@
     <input id="aiText" placeholder="Ask AI: draw a sunset over the sea · make a weekly pocket-money table" autocomplete="off">
     <button type="button" id="aiMic" title="Speak instead of typing">🎤</button>
     <button id="aiGo">✨ Ask AI</button>
-    <button type="button" id="aiSet" title="AI settings">⚙︎</button>
   </form>
   <span id="aiStatus"></span>
 </header>
-<dialog id="aiDlg">
-  <form method="dialog">
-    <h3 style="margin-top:0">AI settings</h3>
-    <p style="font-size:12px;color:var(--muted)">Get a free key at openrouter.ai/keys. It is saved only in this browser on this Mac.</p>
-    <label>OpenRouter key <input id="aiKey" type="password" style="width:260px"></label>
-    <label>Model <input id="aiModel" style="width:260px"></label>
-    <label>Let the AI see the canvas <input type="checkbox" id="aiSee" checked></label>
-    <div class="row" style="margin-top:10px"><button value="save">Save</button></div>
-  </form>
-</dialog>
 <main>
   <!-- DESIGN -->
   <section class="view on" id="draw">
@@ -182,6 +171,7 @@ function regular(cx, cy, r, n, star) {
   return pts;
 }
 function pathOf(s) {
+  if (typeof specialPath === 'function' && ['map', 'pin', 'text'].includes(s.type)) return specialPath(s);
   const p = new Path2D(), [x0, y0] = s.a || [0, 0], [x1, y1] = s.b || [0, 0];
   if (s.type === 'rect') p.rect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
   else if (s.type === 'ellipse') p.ellipse((x0 + x1) / 2, (y0 + y1) / 2, Math.abs(x1 - x0) / 2, Math.abs(y1 - y0) / 2, 0, 0, 7);
@@ -195,6 +185,7 @@ function pathOf(s) {
 }
 function drawShape(s) {
   ctx.save(); ctx.translate(s.dx || 0, s.dy || 0);
+  if (typeof drawSpecial === 'function' && drawSpecial(s)) { ctx.restore(); return; }
   ctx.lineWidth = s.w; ctx.lineCap = ctx.lineJoin = 'round';
   const p = pathOf(s);
   if (s.fill && !['pen', 'line'].includes(s.type)) { ctx.fillStyle = s.fill; ctx.fill(p); }
@@ -295,6 +286,9 @@ fx.onchange = () => { raw[current] = fx.value; refresh(); };
 Object.assign(raw, { A1: 'Item', B1: 'Price', A2: 'Pens', B2: '3.5', A3: 'Paper', B3: '6', A4: 'Paint', B4: '12.25', A5: 'Total', B5: '=SUM(B2:B4)' });
 refresh();
 </script>
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+<script src="geo.js"></script>
 <script src="ai.js"></script>
 </body>
 </html>

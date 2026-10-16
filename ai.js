@@ -3,13 +3,10 @@
    to the canvas or the sheet. Uses the globals from index.html:
    shapes, render, art, raw, refresh, COLS, ROWS. */
 
-const AI_DEFAULT_MODEL = 'google/gemma-4-31b-it:free';
+// The key lives in a private server function (see ../proxy), never in this page.
+const AI_PROXY_URL = 'https://neeru-studio-api.vercel.app/api/ai';
 const SHAPE_TYPES = ['rect', 'ellipse', 'line', 'star', 'poly', 'custom', 'pen'];
-
-const store = {
-  get: k => { try { return localStorage.getItem('neeru.' + k); } catch { return null; } },
-  set: (k, v) => { try { localStorage.setItem('neeru.' + k, v); } catch { /* storage blocked */ } },
-};
+const str = (v, max = 120) => String(v ?? '').slice(0, max);
 
 const SYSTEM_PROMPT = `You control a drawing and spreadsheet app. Reply with ONLY a JSON object, no prose:
 {"say": "<one short friendly sentence>", "actions": [ ... ]}
@@ -25,6 +22,16 @@ Shape actions:
  {"do":"shape","type":"pen","points":[[x,y],...],"stroke":..,"width":..}   (open line)
  "fill": null means no fill.
  {"do":"clear_canvas"}   only if the user asks to start again.
+
+Geography (real map data, accurate borders; NEVER draw countries or coastlines with custom shapes):
+ {"do":"map","focus":"world" | a country name | a region,"highlight":[{"name":"Iceland","colour":"#e63946"}],"land":"#f1ead7","sea":"#cfe8f7"}
+   regions: europe, asia, africa, north america, south america, oceania, middle east, south asia, southeast asia, caribbean, scandinavia, arctic, antarctica.
+   A map fills the whole canvas and replaces the previous one. Put it FIRST, before pins.
+   To show where a country is, use focus "world" (or its region) and highlight it. For "a map of India", use focus "India".
+ {"do":"pin","lat":48.8584,"lon":2.2945,"label":"Eiffel Tower","colour":"#e63946"}   real coordinates, 4 decimals. Must come after a map.
+   Use pins for cities, capitals, landmarks, mountains, rivers' sources and so on. Add several when it helps learning.
+ {"do":"text","x":30,"y":20,"text":"Title","size":28,"colour":"#1d2129","bold":true}   for titles and fun facts.
+ For geography requests, add a title and one short fun fact as text.
 
 Sheet actions (columns A to ${String.fromCharCode(64 + COLS)}, rows 1 to ${ROWS}):
  {"do":"cell","id":"A1","value":"text, number or formula like =SUM(B2:B6)"}
@@ -81,57 +88,80 @@ function applyActions(actions) {
     if (a?.do === 'clear_canvas') shapes.length = 0;
     else if (a?.do === 'clear_sheet') Object.keys(raw).forEach(k => delete raw[k]);
     else if (a?.do === 'shape') { const s = toShape(a); if (s) { shapes.push(s); drawn++; } }
+    else if (a?.do === 'map') {
+      for (let i = shapes.length - 1; i >= 0; i--) if (shapes[i].type === 'map' || shapes[i].type === 'pin') shapes.splice(i, 1);
+      const hl = Array.isArray(a.highlight) ? a.highlight.slice(0, 40).map(h => ({ name: str(h?.name ?? h, 60), colour: hex(h?.colour, '#e63946') })) : [];
+      shapes.unshift({ type: 'map', focus: str(a.focus || 'world', 60), highlight: hl, land: hex(a.land, undefined), sea: hex(a.sea, undefined) });
+      drawn++;
+    }
+    else if (a?.do === 'pin' && Number.isFinite(+a.lat) && Number.isFinite(+a.lon)) {
+      shapes.push({ type: 'pin', lat: +a.lat, lon: +a.lon, label: str(a.label, 60), colour: hex(a.colour, '#e63946') }); drawn++;
+    }
+    else if (a?.do === 'text' && a.text) {
+      shapes.push({ type: 'text', x: num(a.x, 30), y: num(a.y, 20), text: str(a.text, 200), size: Math.min(96, Math.max(10, num(a.size, 24))), colour: hex(a.colour, '#1d2129'), bold: !!a.bold }); drawn++;
+    }
     else if (a?.do === 'cell' && /^[A-Z]\d{1,3}$/.test(a.id || '')) { raw[a.id] = String(a.value ?? ''); cells++; }
   }
   render(); refresh();
+  if (typeof loadGeo === 'function' && shapes.some(s => s.type === 'map')) loadGeo().then(render).catch(() => {});
   if (cells && !drawn) document.querySelector('.tabs button[data-v="sheet"]').click();
   if (drawn && !cells) document.querySelector('.tabs button[data-v="draw"]').click();
   return { drawn, cells };
 }
 
-async function askAI(prompt) {
-  const key = store.get('key');
-  if (!key) { openSettings(); throw new Error('Add your OpenRouter key first.'); }
+/* Free models are shared and often busy upstream, so try these in order.
+   vision: whether the model can look at the canvas image. */
+const FALLBACKS = [
+  { id: 'google/gemma-4-31b-it:free', vision: true },
+  { id: 'google/gemma-4-26b-a4b-it:free', vision: true },
+  { id: 'nvidia/nemotron-3-super-120b-a12b:free', vision: false },
+];
+const RETRYABLE = [408, 429, 500, 502, 503, 504];
+
+async function callModel(model, prompt, image) {
   const content = [{ type: 'text', text: prompt }];
-  if (store.get('see') !== 'no' && shapes.length) {
-    content.push({ type: 'image_url', image_url: { url: art.toDataURL('image/png') } });
-    content[0].text += `\n(The image is the current canvas. It already has ${shapes.length} shapes.)`;
-  }
-  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+  if (image) content.push({ type: 'image_url', image_url: { url: image } });
+  const res = await fetch(AI_PROXY_URL, {
     method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'X-Title': 'Neeru Studio' },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: store.get('model') || AI_DEFAULT_MODEL,
+      model,
       messages: [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content }],
       temperature: 0.4,
     }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const msg = data?.error?.message || res.statusText;
-    if (res.status === 429) throw new Error('Free limit reached for now (20 a minute, 50 a day). Try again later.');
-    if (res.status === 401) throw new Error('The key was rejected. Check it in ⚙︎ settings.');
-    throw new Error('AI error ' + res.status + ': ' + msg);
+  const text = data?.choices?.[0]?.message?.content;
+  if (res.ok && text) return { ok: true, text };
+  const raw = data?.error?.metadata?.raw || data?.error?.message || res.statusText;
+  return { ok: false, status: res.status || 502, msg: String(raw) };
+}
+
+async function askAI(prompt) {
+  const models = FALLBACKS;
+  await (typeof loadGeo === 'function' ? loadGeo().catch(() => {}) : null);
+  const see = shapes.length > 0;
+  const image = see ? art.toDataURL('image/png') : null;
+  let last = null;
+  for (const m of models) {
+    status.textContent = 'Thinking… (' + m.id.split('/')[1].replace(':free', '') + ')';
+    const useImage = image && m.vision;
+    const text = prompt + (useImage ? `\n(The image is the current canvas. It already has ${shapes.length} shapes.)`
+      : see ? `\n(The canvas already has ${shapes.length} shapes; add to it.)` : '');
+    const r = await callModel(m.id, text, useImage ? image : null);
+    if (r.ok) {
+      try { return { ...parseReply(r.text), model: m.id }; }
+      catch (e) { last = { status: 0, msg: e.message }; continue; }   // bad JSON: try the next model
+    }
+    last = r;
+    if (!RETRYABLE.includes(r.status)) break;
   }
-  return parseReply(data?.choices?.[0]?.message?.content || '');
+  if (last?.status === 429) throw new Error('All the free models are busy right now. Try again in a minute.');
+  throw new Error('AI error: ' + (last?.msg || 'no reply'));
 }
 
 /* ---------- UI ---------- */
-const status = document.getElementById('aiStatus'), dlg = document.getElementById('aiDlg');
-function openSettings() {
-  document.getElementById('aiKey').value = store.get('key') || '';
-  document.getElementById('aiModel').value = store.get('model') || AI_DEFAULT_MODEL;
-  document.getElementById('aiSee').checked = store.get('see') !== 'no';
-  dlg.showModal();
-}
-dlg.addEventListener('close', () => {
-  if (dlg.returnValue !== 'save') return;
-  store.set('key', document.getElementById('aiKey').value.trim());
-  store.set('model', document.getElementById('aiModel').value.trim() || AI_DEFAULT_MODEL);
-  store.set('see', document.getElementById('aiSee').checked ? 'yes' : 'no');
-  status.textContent = 'Settings saved.';
-});
-document.getElementById('aiSet').onclick = openSettings;
+const status = document.getElementById('aiStatus');
 document.getElementById('aiForm').onsubmit = async e => {
   e.preventDefault();
   const input = document.getElementById('aiText'), go = document.getElementById('aiGo');
@@ -141,7 +171,7 @@ document.getElementById('aiForm').onsubmit = async e => {
   try {
     const reply = await askAI(prompt);
     const { drawn, cells } = applyActions(reply.actions);
-    status.textContent = (reply.say ? reply.say + ' ' : '') + `(${drawn} shapes, ${cells} cells)`;
+    status.textContent = (reply.say ? reply.say + ' ' : '') + `(${drawn} shapes, ${cells} cells · ${reply.model.split('/')[1].replace(':free', '')})`;
     input.value = '';
   } catch (err) {
     status.textContent = '⚠️ ' + err.message;
