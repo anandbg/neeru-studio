@@ -114,9 +114,10 @@ function applyActions(actions) {
 const FALLBACKS = [
   { id: 'google/gemma-4-31b-it:free', vision: true },
   { id: 'google/gemma-4-26b-a4b-it:free', vision: true },
-  { id: 'nvidia/nemotron-3-super-120b-a12b:free', vision: false },
+  { id: 'nvidia/nemotron-3.5-super-vl:free', vision: true },
+  { id: 'nvidia/nemotron-3-ultra-550b-a55b:free', vision: false },
 ];
-const RETRYABLE = [408, 429, 500, 502, 503, 504];
+const RETRYABLE = [404, 408, 429, 500, 502, 503, 504];
 
 async function callModel(model, prompt, image) {
   const content = [{ type: 'text', text: prompt }];
