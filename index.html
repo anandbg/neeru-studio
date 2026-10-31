@@ -25,6 +25,7 @@
   input[type=range] { width:110px; }
   .row { display:flex; gap:6px; flex-wrap:wrap; }
   .row button { flex:1; padding:6px; border:1px solid var(--line); background:#fff; border-radius:6px; cursor:pointer; font:inherit; font-size:12px; }
+  #pickWheel.on,#pickSquare.on { background:#ece8ff; font-weight:600 }
   #wheel { width:196px; height:196px; cursor:crosshair; display:block; }
   .stage { flex:1; display:flex; align-items:center; justify-content:center; overflow:auto; padding:20px; }
   canvas#art { background:#fff; box-shadow:0 2px 12px rgba(0,0,0,.08); cursor:crosshair; }
@@ -87,7 +88,12 @@
       </div>
       <label>Sides / points <input type="number" id="sides" value="5" min="3" max="20" style="width:50px"></label>
       <h3>Colour</h3>
+      <div class="row" style="margin-bottom:6px"><button id="pickWheel" class="on">Wheel</button><button id="pickSquare">Square</button></div>
       <canvas id="wheel" width="392" height="392"></canvas>
+      <div id="squareBox" style="display:none">
+        <canvas id="sq" width="392" height="300" style="width:196px;height:150px;cursor:crosshair;display:block;border-radius:6px"></canvas>
+        <input type="range" id="hueBar" min="0" max="360" value="255" style="width:196px;margin-top:8px;background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);height:12px;border-radius:6px;-webkit-appearance:none;appearance:none">
+      </div>
       <label>Lightness <input type="range" id="light" min="0" max="100" value="50"></label>
       <label>Opacity <input type="range" id="alpha" min="0" max="100" value="100"></label>
       <label>Hex <input id="hex" value="#6c4cf5" style="width:80px"></label>
@@ -102,7 +108,7 @@
       <div class="swatches" id="swatches"></div>
       <label>Stroke width <input type="range" id="width" min="1" max="40" value="4"></label>
       <h3>Edit</h3>
-      <div class="row"><button id="undo">Undo</button><button id="clear">Clear</button><button id="png">Save PNG</button></div>
+      <div class="row"><button id="undo">Undo</button><button id="del" title="Select tool, click a shape, then Delete">Delete</button><button id="clear">Clear</button><button id="png">Save PNG</button></div>
     </aside>
     <div class="stage"><canvas id="art" width="1000" height="680"></canvas></div>
   </section>
@@ -145,6 +151,17 @@ function setColour(hex) {
   if (target === 'fill') fill = hex; else stroke = hex;
   document.getElementById('fillSw').style.background = fill;
   document.getElementById('strokeSw').style.background = stroke;
+  recolourSelected(hex);
+}
+function recolourSelected(hex) {
+  try {
+    if (tool !== 'select' || !shapes[selected] || picking) return;     // not set up yet during page start
+    const s = shapes[selected];
+    if (s.type === 'text') s.colour = hex;
+    else if (target === 'fill' && !['pen', 'line'].includes(s.type)) s.fill = rgba(hex);
+    else s.stroke = rgba(hex);
+    render();
+  } catch (_) { /* page still starting */ }
 }
 wheel.onpointerdown = wheel.onpointermove = e => {
   if (e.type === 'pointermove' && !e.buttons) return;
@@ -162,9 +179,48 @@ const sw = document.getElementById('swatches');
   .forEach(c => { const d = document.createElement('div'); d.style.background = c; d.onclick = () => setColour(c); sw.appendChild(d); });
 drawWheel(); setColour(fill);
 
+/* ---------- second colour picker: saturation/brightness square + hue bar ---------- */
+const sq = document.getElementById('sq'), sc = sq.getContext('2d'), hueBar = document.getElementById('hueBar');
+let sqH = 255, sqS = 0.9, sqV = 0.9;
+function hsv2hex(h, s, v) {
+  const f = n => { const k = (n + h / 60) % 6; return v - v * s * Math.max(0, Math.min(k, 4 - k, 1)); };
+  return toHex([f(5), f(3), f(1)].map(x => Math.round(x * 255)));
+}
+function drawSquare() {
+  const w = sq.width, hgt = sq.height;
+  sc.fillStyle = `hsl(${sqH},100%,50%)`; sc.fillRect(0, 0, w, hgt);
+  let g = sc.createLinearGradient(0, 0, w, 0); g.addColorStop(0, '#fff'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  sc.fillStyle = g; sc.fillRect(0, 0, w, hgt);
+  g = sc.createLinearGradient(0, 0, 0, hgt); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, '#000');
+  sc.fillStyle = g; sc.fillRect(0, 0, w, hgt);
+  const x = sqS * w, y = (1 - sqV) * hgt;                               // ring marks the chosen colour
+  sc.lineWidth = 3; sc.strokeStyle = '#fff'; sc.beginPath(); sc.arc(x, y, 9, 0, 7); sc.stroke();
+  sc.lineWidth = 1.5; sc.strokeStyle = '#000'; sc.beginPath(); sc.arc(x, y, 10.5, 0, 7); sc.stroke();
+}
+const pickSq = e => {
+  if (e.type === 'pointermove' && !e.buttons) return;
+  const b = sq.getBoundingClientRect();
+  sqS = Math.min(1, Math.max(0, (e.clientX - b.left) / b.width)); sqV = 1 - Math.min(1, Math.max(0, (e.clientY - b.top) / b.height));
+  drawSquare(); setColour(hsv2hex(sqH, sqS, sqV));
+};
+sq.onpointerdown = e => { sq.setPointerCapture(e.pointerId); pickSq(e); };
+sq.onpointermove = pickSq;
+hueBar.oninput = e => { sqH = +e.target.value; drawSquare(); setColour(hsv2hex(sqH, sqS, sqV)); };
+function showPicker(which) {
+  const sqr = which === 'square';
+  document.getElementById('squareBox').style.display = sqr ? 'block' : 'none';
+  wheel.style.display = sqr ? 'none' : 'block';
+  document.getElementById('light').parentElement.style.display = sqr ? 'none' : '';
+  document.getElementById('pickWheel').classList.toggle('on', !sqr); document.getElementById('pickSquare').classList.toggle('on', sqr);
+  if (sqr) drawSquare();
+}
+document.getElementById('pickWheel').onclick = () => showPicker('wheel');
+document.getElementById('pickSquare').onclick = () => showPicker('square');
+
+
 /* ---------- drawing ---------- */
 const art = document.getElementById('art'), ctx = art.getContext('2d');
-let tool = 'pen', shapes = [], live = null, picking = false, dragging = null;
+let tool = 'pen', shapes = [], live = null, picking = false, dragging = null, selected = null;
 document.querySelectorAll('#tools button').forEach(b => b.onclick = () => {
   document.querySelectorAll('#tools button').forEach(x => x.classList.remove('on'));
   b.classList.add('on'); tool = b.dataset.t; live = null; render();
@@ -207,7 +263,12 @@ function drawShape(s) {
 function render() {
   ctx.clearRect(0, 0, art.width, art.height);
   shapes.forEach(drawShape); if (live) drawShape(live);
+  if (tool === 'select' && shapes[selected]) {                       // dashed outline on the selected shape
+    const s = shapes[selected]; ctx.save(); ctx.translate(s.dx || 0, s.dy || 0);
+    ctx.setLineDash([6, 4]); ctx.lineWidth = 2; ctx.strokeStyle = '#3a86ff'; ctx.stroke(pathOf(s)); ctx.restore();
+  }
 }
+function deleteSelected() { if (shapes[selected]) { shapes.splice(selected, 1); selected = null; render(); } }
 art.onpointerdown = e => {
   const [x, y] = pos(e);
   if (picking) {
@@ -218,8 +279,9 @@ art.onpointerdown = e => {
     for (let i = shapes.length - 1; i >= 0; i--) {
       const s = shapes[i]; ctx.save(); ctx.translate(s.dx || 0, s.dy || 0); ctx.lineWidth = s.w + 8;
       const hit = ctx.isPointInPath(pathOf(s), x, y) || ctx.isPointInStroke(pathOf(s), x, y); ctx.restore();
-      if (hit) { dragging = { i, sx: x, sy: y, dx: s.dx || 0, dy: s.dy || 0 }; return; }
+      if (hit) { selected = i; dragging = { i, sx: x, sy: y, dx: s.dx || 0, dy: s.dy || 0 }; render(); return; }
     }
+    selected = null; render();
     return;
   }
   if (tool === 'custom') {
@@ -247,11 +309,14 @@ art.onpointerup = () => {
 art.ondblclick = () => {
   if (tool === 'custom' && live) { live.pts.pop(); live.open = false; shapes.push(live); live = null; render(); }
 };
-document.getElementById('undo').onclick = () => { shapes.pop(); render(); };
-document.getElementById('clear').onclick = () => { if (confirm('Clear the canvas?')) { shapes = []; render(); } };
+document.getElementById('undo').onclick = () => { shapes.pop(); selected = null; render(); };
+document.getElementById('del').onclick = deleteSelected;
+document.getElementById('clear').onclick = () => { if (confirm('Clear the canvas?')) { shapes = []; selected = null; render(); } };
 document.getElementById('eyedrop').onclick = () => { picking = true; art.style.cursor = 'copy'; };
 document.getElementById('png').onclick = () => { const a = document.createElement('a'); a.download = 'neeru-design.png'; a.href = art.toDataURL(); a.click(); };
-document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key === 'z') { e.preventDefault(); shapes.pop(); render(); } });
+document.addEventListener('keydown', e => {
+  if ((e.key === 'Delete' || e.key === 'Backspace') && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) { e.preventDefault(); deleteSelected(); }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'z') { e.preventDefault(); shapes.pop(); render(); } });
 
 /* ---------- sheet ---------- */
 const COLS = 12, ROWS = 40, raw = {}, grid = document.getElementById('grid');
@@ -302,6 +367,6 @@ refresh();
 <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
 <script src="geo.js"></script>
-<script src="ai.js?v=2"></script>
+<script src="ai.js?v=3"></script>
 </body>
 </html>
