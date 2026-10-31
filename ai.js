@@ -199,26 +199,28 @@ document.getElementById('aiForm').onsubmit = async e => {
 
 /* ---------- voice input ----------
    Uses the browser's built-in speech recognition (Chrome, Edge, Safari).
-   Free, no key. Words appear as you speak; when you stop, it asks the AI. */
+   Free, no key. Words appear as you speak. Silence sends them to the AI; pressing the mic again stops without sending. */
 const mic = document.getElementById('aiMic');
 const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
 if (!Speech) {
   mic.title = 'Voice needs Chrome, Edge or Safari';
   mic.onclick = () => { status.textContent = '⚠️ Voice input needs Chrome, Edge or Safari.'; };
 } else {
-  let rec = null;
+  let rec = null, stoppedByHand = false;
   mic.onclick = () => {
-    if (rec) { rec.stop(); return; }
+    if (rec) { stoppedByHand = true; rec.stop(); return; }   // pressed again: stop, keep the words, do not send
     rec = new Speech();
     rec.lang = navigator.language || 'en-GB';
     rec.interimResults = true;
     const input = document.getElementById('aiText');
-    let finalText = '';
+    let finalText = '', lastText = '';
+    stoppedByHand = false;
     rec.onstart = () => { mic.classList.add('listening'); status.textContent = 'Listening… speak now.'; };
     rec.onresult = e => {
       let interim = '';
       for (const r of e.results) (r.isFinal ? (finalText = r[0].transcript) : (interim += r[0].transcript));
-      input.value = finalText || interim;
+      lastText = finalText || interim;
+      input.value = lastText;
     };
     rec.onerror = e => {
       status.textContent = e.error === 'not-allowed'
@@ -227,6 +229,7 @@ if (!Speech) {
     };
     rec.onend = () => {
       mic.classList.remove('listening'); rec = null;   // the submit below then locks the mic until the AI replies
+      if (stoppedByHand) { status.textContent = lastText.trim() ? 'Stopped. Edit the words if you like, then press Ask AI.' : 'Stopped.'; return; }
       if (finalText.trim()) document.getElementById('aiForm').requestSubmit();
     };
     rec.start();
