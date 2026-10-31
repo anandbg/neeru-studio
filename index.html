@@ -13,6 +13,16 @@
   .tabs button { border:0; background:none; padding:6px 12px; border-radius:8px; cursor:pointer; font:inherit; color:var(--muted); }
   .hist button { border:1px solid var(--line); background:#fff; padding:6px 10px; border-radius:8px; cursor:pointer; font:inherit; margin-right:4px }
   .hist button:disabled { opacity:.4; cursor:default }
+  .easy { display:flex; align-items:center; gap:4px; font-size:12px; color:var(--muted); }
+  .easy button { border:1px solid var(--line); background:#fff; padding:5px 8px; border-radius:8px; font:inherit; cursor:pointer; }
+  .easy button.on { background:#fff3a3; border-color:#000; color:#000; font-weight:700; }
+  .ripple { position:fixed; width:26px; height:26px; margin:-13px 0 0 -13px; border:6px solid #ff2d55; border-radius:50%; pointer-events:none; z-index:99999; animation:rip .65s ease-out forwards; }
+  @keyframes rip { from { transform:scale(.4); opacity:1; } to { transform:scale(3.2); opacity:0; } }
+  .swatches div.cur { outline:3px solid #000; outline-offset:1px; }
+  .swatches div:focus-visible { outline:3px solid var(--accent); outline-offset:1px; }
+  .swatches:empty::after { content:'None yet'; font-size:12px; color:var(--muted); grid-column:1/-1; }
+  #selBar { margin-bottom:12px; width:1000px; max-width:100%; box-sizing:border-box; min-height:44px; padding:10px 14px; font-size:18px; line-height:1.3; background:#fff; border:2px solid var(--line); border-radius:10px; max-width:1000px; }
+  #selBar.has { border-color:#3a86ff; background:#eef4ff; font-weight:600; }
   .tabs button.on { background:var(--accent); color:#fff; }
   main { flex:1; display:flex; min-height:0; }
   .view { flex:1; display:none; min-height:0; } .view.on { display:flex; }
@@ -29,7 +39,7 @@
   .row button { flex:1; padding:6px; border:1px solid var(--line); background:#fff; border-radius:6px; cursor:pointer; font:inherit; font-size:12px; }
   #pickWheel.on,#pickSquare.on { background:#ece8ff; font-weight:600 }
   #wheel { width:196px; height:196px; cursor:crosshair; display:block; }
-  .stage { flex:1; display:flex; align-items:center; justify-content:center; overflow:auto; padding:20px; }
+  .stage { flex:1; display:flex; flex-direction:column; justify-content:flex-start; align-items:center; overflow:auto; padding:20px; }
   canvas#art { background:#fff; box-shadow:0 2px 12px rgba(0,0,0,.08); cursor:crosshair; }
   .sheetwrap { flex:1; overflow:auto; background:#fff; }
   .fbar { display:flex; gap:8px; padding:6px 10px; border-bottom:1px solid var(--line); background:var(--panel); align-items:center; }
@@ -65,6 +75,7 @@
 <header>
   <h1>Neeru <span>Studio</span></h1>
   <div class="tabs"><button data-v="draw" class="on">Design</button><button data-v="sheet">Sheet</button></div>
+  <div class="easy" title="Make the pointer bigger"><span>Pointer</span><button data-cur="1">Normal</button><button data-cur="2">Large</button><button data-cur="3">Huge</button></div>
   <div class="hist"><button id="topUndo" title="Undo (Cmd+Z on Mac, Ctrl+Z on Windows)">↶ Undo</button><button id="topRedo" title="Redo (Shift+Cmd+Z, or Ctrl+Y on Windows)">↷ Redo</button></div>
   <form id="aiForm" class="ai">
     <input id="aiText" placeholder="Ask AI: draw a sunset over the sea · make a weekly pocket-money table" autocomplete="off">
@@ -108,12 +119,17 @@
         <span>Stroke <b id="strokeSw" style="display:inline-block;width:18px;height:12px;vertical-align:middle"></b></span>
         <label style="margin:0">No fill <input type="checkbox" id="nofill"></label>
       </div>
+      <label style="margin-top:8px">Palette <select id="palSel" style="width:130px;font:inherit;padding:4px"></select></label>
       <div class="swatches" id="swatches"></div>
+      <div class="row" style="margin:8px 0 2px"><label style="margin:0">More colours <input type="color" id="nativeCol" value="#6c4cf5" style="width:56px;height:34px;padding:0;border:1px solid var(--line);border-radius:6px"></label></div>
+      <h3>Recent colours</h3><div class="swatches" id="recent"></div>
+      <h3>My saved colours</h3><div class="swatches" id="saved"></div>
+      <div class="row" style="margin-top:6px"><button type="button" id="saveCol">+ Save this colour</button></div>
       <label>Stroke width <input type="range" id="width" min="1" max="40" value="4"></label>
       <h3>Edit</h3>
       <div class="row"><button id="undo">Undo</button><button id="del" title="Select tool, click a shape, then Delete">Delete</button><button id="clear">Clear</button><button id="png">Save PNG</button></div>
     </aside>
-    <div class="stage"><canvas id="art" width="1000" height="680"></canvas></div>
+    <div class="stage"><div id="selBar" role="status" aria-live="polite"></div><canvas id="art" width="1000" height="680"></canvas></div>
   </section>
   <!-- SHEET -->
   <section class="view" id="sheet" style="flex-direction:column">
@@ -177,9 +193,6 @@ document.getElementById('alpha').oninput = e => alpha = e.target.value / 100;
 document.getElementById('hex').onchange = e => /^#[0-9a-f]{6}$/i.test(e.target.value) && setColour(e.target.value);
 document.getElementById('setFill').onclick = () => { target = 'fill'; document.getElementById('hex').value = fill; };
 document.getElementById('setStroke').onclick = () => { target = 'stroke'; document.getElementById('hex').value = stroke; };
-const sw = document.getElementById('swatches');
-['#000000','#ffffff','#e63946','#f4a261','#ffd60a','#2a9d8f','#06d6a0','#118ab2','#3a86ff','#6c4cf5','#c77dff','#ff70a6','#8d99ae','#5c4033','#2b2d42','#ffb4a2','#b5e48c','#a2d2ff']
-  .forEach(c => { const d = document.createElement('div'); d.style.background = c; d.onclick = () => setColour(c); sw.appendChild(d); });
 drawWheel(); setColour(fill);
 
 /* ---------- second colour picker: saturation/brightness square + hue bar ---------- */
@@ -269,7 +282,8 @@ function render() {
   clearTimeout(histTimer); histTimer = setTimeout(commitHistory, 300);
   if (tool === 'select' && shapes[selected]) {                       // dashed outline on the selected shape
     const s = shapes[selected]; ctx.save(); ctx.translate(s.dx || 0, s.dy || 0);
-    ctx.setLineDash([6, 4]); ctx.lineWidth = 2; ctx.strokeStyle = '#3a86ff'; ctx.stroke(pathOf(s)); ctx.restore();
+    ctx.lineWidth = 9; ctx.strokeStyle = '#fff'; ctx.stroke(pathOf(s));
+    ctx.setLineDash([12, 8]); ctx.lineWidth = 5; ctx.strokeStyle = '#1d6bff'; ctx.stroke(pathOf(s)); ctx.restore();
   }
 }
 /* ---------- undo / redo ----------
@@ -392,6 +406,7 @@ refresh();
 <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
 <script src="geo.js"></script>
-<script src="ai.js?v=4"></script>
+<script src="ai.js?v=6"></script>
+<script src="access.js?v=6"></script>
 </body>
 </html>
