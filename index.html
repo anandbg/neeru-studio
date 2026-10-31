@@ -11,6 +11,8 @@
   header { display:flex; align-items:center; gap:16px; padding:8px 14px; background:var(--panel); border-bottom:1px solid var(--line); }
   header h1 { font-size:16px; margin:0; } header h1 span { color:var(--accent); }
   .tabs button { border:0; background:none; padding:6px 12px; border-radius:8px; cursor:pointer; font:inherit; color:var(--muted); }
+  .hist button { border:1px solid var(--line); background:#fff; padding:6px 10px; border-radius:8px; cursor:pointer; font:inherit; margin-right:4px }
+  .hist button:disabled { opacity:.4; cursor:default }
   .tabs button.on { background:var(--accent); color:#fff; }
   main { flex:1; display:flex; min-height:0; }
   .view { flex:1; display:none; min-height:0; } .view.on { display:flex; }
@@ -63,6 +65,7 @@
 <header>
   <h1>Neeru <span>Studio</span></h1>
   <div class="tabs"><button data-v="draw" class="on">Design</button><button data-v="sheet">Sheet</button></div>
+  <div class="hist"><button id="topUndo" title="Undo (Cmd+Z on Mac, Ctrl+Z on Windows)">↶ Undo</button><button id="topRedo" title="Redo (Shift+Cmd+Z, or Ctrl+Y on Windows)">↷ Redo</button></div>
   <form id="aiForm" class="ai">
     <input id="aiText" placeholder="Ask AI: draw a sunset over the sea · make a weekly pocket-money table" autocomplete="off">
     <button type="button" id="aiMic" title="Speak instead of typing">🎤</button>
@@ -263,11 +266,27 @@ function drawShape(s) {
 function render() {
   ctx.clearRect(0, 0, art.width, art.height);
   shapes.forEach(drawShape); if (live) drawShape(live);
+  clearTimeout(histTimer); histTimer = setTimeout(commitHistory, 300);
   if (tool === 'select' && shapes[selected]) {                       // dashed outline on the selected shape
     const s = shapes[selected]; ctx.save(); ctx.translate(s.dx || 0, s.dy || 0);
     ctx.setLineDash([6, 4]); ctx.lineWidth = 2; ctx.strokeStyle = '#3a86ff'; ctx.stroke(pathOf(s)); ctx.restore();
   }
 }
+/* ---------- undo / redo ----------
+   Watches the shapes; a pause of 0.3 s after any change saves one undo step. So a whole drag, an AI drawing
+   or a recolour is one step, and every change can be undone, not just the last shape drawn. */
+let present = '[]', undoS = [], redoS = [], histTimer = null;
+function commitHistory() {
+  clearTimeout(histTimer);
+  const j = JSON.stringify(shapes);
+  if (j !== present) { undoS.push(present); if (undoS.length > 60) undoS.shift(); present = j; redoS = []; }
+  syncHist();
+}
+function syncHist() {
+  document.getElementById('topUndo').disabled = !undoS.length; document.getElementById('topRedo').disabled = !redoS.length;
+}
+function undo() { commitHistory(); if (!undoS.length) return; redoS.push(present); present = undoS.pop(); shapes = JSON.parse(present); selected = null; render(); syncHist(); }
+function redo() { commitHistory(); if (!redoS.length) return; undoS.push(present); present = redoS.pop(); shapes = JSON.parse(present); selected = null; render(); syncHist(); }
 function deleteSelected() { if (shapes[selected]) { shapes.splice(selected, 1); selected = null; render(); } }
 art.onpointerdown = e => {
   const [x, y] = pos(e);
@@ -309,14 +328,20 @@ art.onpointerup = () => {
 art.ondblclick = () => {
   if (tool === 'custom' && live) { live.pts.pop(); live.open = false; shapes.push(live); live = null; render(); }
 };
-document.getElementById('undo').onclick = () => { shapes.pop(); selected = null; render(); };
+document.getElementById('undo').onclick = undo;
+document.getElementById('topUndo').onclick = undo;
+document.getElementById('topRedo').onclick = redo;
+syncHist();
 document.getElementById('del').onclick = deleteSelected;
 document.getElementById('clear').onclick = () => { if (confirm('Clear the canvas?')) { shapes = []; selected = null; render(); } };
 document.getElementById('eyedrop').onclick = () => { picking = true; art.style.cursor = 'copy'; };
 document.getElementById('png').onclick = () => { const a = document.createElement('a'); a.download = 'neeru-design.png'; a.href = art.toDataURL(); a.click(); };
 document.addEventListener('keydown', e => {
   if ((e.key === 'Delete' || e.key === 'Backspace') && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) { e.preventDefault(); deleteSelected(); }
-  if ((e.metaKey || e.ctrlKey) && e.key === 'z') { e.preventDefault(); shapes.pop(); render(); } });
+  const typing = /INPUT|TEXTAREA/.test(document.activeElement.tagName);      // let text boxes keep their own undo
+  const mod = e.metaKey || e.ctrlKey, k = e.key.toLowerCase();
+  if (mod && k === 'z' && !typing) { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+  else if (mod && k === 'y' && !typing) { e.preventDefault(); redo(); } });
 
 /* ---------- sheet ---------- */
 const COLS = 12, ROWS = 40, raw = {}, grid = document.getElementById('grid');
@@ -367,6 +392,6 @@ refresh();
 <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
 <script src="geo.js"></script>
-<script src="ai.js?v=3"></script>
+<script src="ai.js?v=4"></script>
 </body>
 </html>
